@@ -7,3 +7,5 @@ This project is automatically generated.
 ```sh
 pip install -r requirements.txt
 ```
+!pip install langchain_groq langchain qdrant-client sentence-transformers pypdf PyPDF2 numpy
+
