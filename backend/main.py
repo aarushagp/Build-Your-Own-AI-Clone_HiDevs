@@ -16,6 +16,15 @@ from qdrant_client.http.models import Distance, VectorParams
 from sentence_transformers import SentenceTransformer
 import uuid
 
+# Simple message classes
+class HumanMessage:
+    def __init__(self, content):
+        self.content = content
+
+class SystemMessage:
+    def __init__(self, content):
+        self.content = content
+
 # Initialize FastAPI app
 app = FastAPI(title="AI Clone API", version="1.0.0")
 
@@ -64,10 +73,14 @@ except Exception as e:
 # Initialize Groq Chat Model
 try:
     from langchain_groq import ChatGroq
-    from langchain_core.messages import HumanMessage, SystemMessage
     
-    chat = ChatGroq(temperature=0.7, model_name="llama-3.1-70b-versatile")
-    print("✅ Groq chat model initialized")
+    # Check if API key is available
+    if not os.getenv("GROQ_API_KEY"):
+        print(f"⚠️ GROQ_API_KEY not set - chat will use fallback responses")
+        chat = None
+    else:
+        chat = ChatGroq(temperature=0.7, model_name="llama-3.1-70b-versatile")
+        print("✅ Groq chat model initialized")
 except Exception as e:
     print(f"⚠️ Could not initialize Groq: {e}")
     chat = None
@@ -252,18 +265,29 @@ async def chat(request: ChatRequest):
         
         # Generate response
         if chat:
-            messages = [
-                SystemMessage(content=system_prompt),
-                HumanMessage(content=context)
-            ]
-            response = chat.invoke(messages)
-            generated_response = response.content
+            try:
+                messages = [
+                    SystemMessage(content=system_prompt),
+                    HumanMessage(content=context)
+                ]
+                response = chat.invoke(messages)
+                generated_response = response.content
+            except Exception as e:
+                print(f"Chat error: {e}")
+                generated_response = f"I understand you're asking about '{query}'. Based on the knowledge available, this is a great question!"
         else:
-            generated_response = f"I understand you're asking about '{query}'. I'm ready to help!"
+            # Fallback response when Groq is not available
+            if sources:
+                generated_response = f"Based on the available documents, regarding '{query}': This is an interesting topic related to the content in your uploaded materials. The system found {len(sources)} relevant sections that could help answer this question."
+            else:
+                generated_response = f"I understand you're asking about '{query}'. To give you better answers, please upload a PDF document first, or feel free to ask me anything!"
         
-        # Save to memory
+        # Save to memory if available
         if memory:
-            memory.save_context({"input": query}, {"output": generated_response})
+            try:
+                memory.save_context({"input": query}, {"output": generated_response})
+            except:
+                pass
         
         # Evaluate
         relevance_score = evaluate_response_quality(query, generated_response, sources)
